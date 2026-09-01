@@ -1,9 +1,11 @@
 package com.example.ui.screens
 
+import android.graphics.Bitmap
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.result.launch
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -29,6 +31,7 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.DocumentScanner
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Receipt
 import androidx.compose.material.icons.filled.Store
 import androidx.compose.material3.Button
@@ -86,6 +89,7 @@ fun ScanReceiptScreen(
     wallets: List<WalletWithComputedBalance>,
     expenseCategories: List<String>,
     onScanFromUri: (Uri) -> Unit,
+    onScanFromBitmap: (Bitmap) -> Unit,
     onScanFromText: (String) -> Unit,
     onConfirmExpense: (walletId: Long, merchant: String, amount: Double, category: String, note: String) -> Unit,
     onClearReceipt: () -> Unit
@@ -108,6 +112,55 @@ fun ScanReceiptScreen(
 
     var manualTextReceipt by remember { mutableStateOf("") }
     var showManualTextInput by remember { mutableStateOf(false) }
+    var capturedPhotoUri by remember { mutableStateOf<Uri?>(null) }
+
+    // Take high-resolution picture with FileProvider
+    val takePictureLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicture(),
+        onResult = { success: Boolean ->
+            if (success) {
+                capturedPhotoUri?.let { onScanFromUri(it) }
+            }
+        }
+    )
+
+    // Fallback direct preview launcher
+    val cameraPreviewLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicturePreview(),
+        onResult = { bitmap: Bitmap? ->
+            bitmap?.let { onScanFromBitmap(it) }
+        }
+    )
+
+    fun launchCameraInternal() {
+        try {
+            val photoFile = java.io.File(
+                context.cacheDir,
+                "receipt_camera_${System.currentTimeMillis()}.jpg"
+            )
+            photoFile.createNewFile()
+            val authority = "${context.packageName}.fileprovider"
+            val uri = androidx.core.content.FileProvider.getUriForFile(context, authority, photoFile)
+            capturedPhotoUri = uri
+            takePictureLauncher.launch(uri)
+        } catch (e: Exception) {
+            // Fallback to preview contract if FileProvider has issue
+            cameraPreviewLauncher.launch()
+        }
+    }
+
+    // Permission launcher for Camera
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+        onResult = { isGranted: Boolean ->
+            if (isGranted) {
+                launchCameraInternal()
+            } else {
+                // If permission is denied or not required, try launcher anyway
+                launchCameraInternal()
+            }
+        }
+    )
 
     // Android Photo Picker launcher (Google Play compliant zero-permission)
     val photoPickerLauncher = rememberLauncherForActivityResult(
@@ -141,7 +194,7 @@ fun ScanReceiptScreen(
                     color = TextPrimaryDark
                 )
                 Text(
-                    text = "Ekstraksi otomatis nama toko, item belanja, total tagihan dan sinkronisasi ke buku besar kas/bank.",
+                    text = "Ambil foto langsung dengan kamera HP atau pilih dari galeri untuk ekstraksi otomatis nama toko, total belanja, dan kategori.",
                     fontSize = 12.sp,
                     color = TextSecondaryDark
                 )
@@ -179,11 +232,31 @@ fun ScanReceiptScreen(
                     }
 
                     Text(
-                        text = "Pilih Foto Struk / Nota",
+                        text = "Ambil Foto atau Pilih Struk",
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
                         color = TextPrimaryDark
                     )
+
+                    // Primary Button: Kamera HP Langsung
+                    Button(
+                        onClick = { permissionLauncher.launch(android.Manifest.permission.CAMERA) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(52.dp)
+                            .testTag("open_camera_button"),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = BrandBlueVibrant)
+                    ) {
+                        Icon(Icons.Default.PhotoCamera, contentDescription = null, tint = Color.White)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            "Ambil Foto Kamera Langsung",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color.White
+                        )
+                    }
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -195,29 +268,29 @@ fun ScanReceiptScreen(
                                     PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                                 )
                             },
-                            modifier = Modifier.weight(1f).height(48.dp).testTag("pick_receipt_button"),
+                            modifier = Modifier.weight(1f).height(46.dp).testTag("pick_receipt_button"),
                             shape = RoundedCornerShape(12.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = BrandBluePrimary)
                         ) {
                             Icon(Icons.Default.AddPhotoAlternate, contentDescription = null, tint = Color.White)
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Buka Galeri Foto", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                            Text("Dari Galeri", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
                         }
 
                         OutlinedButton(
                             onClick = { showManualTextInput = !showManualTextInput },
-                            modifier = Modifier.weight(1f).height(48.dp),
+                            modifier = Modifier.weight(1f).height(46.dp),
                             shape = RoundedCornerShape(12.dp),
                             border = ButtonDefaults.outlinedButtonBorder.copy(brush = androidx.compose.ui.graphics.SolidColor(DarkSurfaceBorder))
                         ) {
                             Icon(Icons.Default.ContentPaste, contentDescription = null, tint = BrandBlueLight)
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Input / Tempel Teks", fontSize = 12.sp, color = BrandBlueLight)
+                            Text("Tempel Teks", fontSize = 12.sp, color = BrandBlueLight)
                         }
                     }
 
                     // Preset Quick Sample OCR Scans
-                    Text("Atau coba struk otomatis:", fontSize = 11.sp, color = TextTertiaryDark)
+                    Text("Atau coba contoh nota cepat:", fontSize = 11.sp, color = TextTertiaryDark)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)

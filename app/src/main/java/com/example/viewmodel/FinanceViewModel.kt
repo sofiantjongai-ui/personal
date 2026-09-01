@@ -444,6 +444,11 @@ class FinanceViewModel(application: Application) : AndroidViewModel(application)
         _scannedReceipt.value = result
     }
 
+    fun scanReceiptFromBitmap(context: Context, bitmap: android.graphics.Bitmap) {
+        val result = ReceiptScannerHelper.processReceiptBitmap(context, bitmap)
+        _scannedReceipt.value = result
+    }
+
     fun scanReceiptFromText(text: String) {
         val result = ReceiptScannerHelper.parseRawText(text)
         _scannedReceipt.value = result

@@ -259,6 +259,9 @@ fun ApexFinanceApp(viewModel: FinanceViewModel) {
                         onScanFromUri = { uri ->
                             viewModel.scanReceiptFromUri(context, uri)
                         },
+                        onScanFromBitmap = { bitmap ->
+                            viewModel.scanReceiptFromBitmap(context, bitmap)
+                        },
                         onScanFromText = { text ->
                             viewModel.scanReceiptFromText(text)
                         },
